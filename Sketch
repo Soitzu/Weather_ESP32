@@ -1,5 +1,7 @@
 #include <LiquidCrystal_I2C.h>
 #include "DHT.h"
+#include <PubSubClient.h>
+#include <WiFi.h>
 
 #define DHTPIN 2
 #define DHTTYPE DHT11
@@ -7,6 +9,15 @@
 int lcdColumns = 16;
 int lcdRows = 2;
   
+const char* ssid = "";
+const char* password = "";
+const char* mqtt_server = "192.168.71.116";
+const char* mqtt_user = "nikita";
+const char* mqtt_password = "";
+
+
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 // set LCD address, number of columns and rows
 // if you don't know your display address, run an I2C scanner sketch
@@ -15,28 +26,43 @@ DHT dht(DHTPIN, DHTTYPE);
 
 
 void setup(){
-  // initialize LCD
-  lcd.init();
-  // turn on LCD backlight                      
+  Serial.begin(9600);
+
+  // WiFi 
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("WiFi connected");
+
+  // LCD
+  lcd.init();                      
   lcd.backlight();
+
+  // DHT 11
   dht.begin();
+
+  // MQTT
+  client.setServer(mqtt_server, 1883);
+
 }
 
 void loop(){
-  Serial.begin(9600);
-  // set cursor to first column, first row
-  lcd.setCursor(0, 0);
-  // print message
-  lcd.print("Hello, World!");
-  delay(1000);
-  // clears the display to print new message
-  lcd.clear();
-  // set cursor to first column, second row
-  lcd.setCursor(0,1);
-  lcd.print("Hello, World!");
+   if (!client.connected()) {
+    if (client.connect("ESP32Client", mqtt_user, mqtt_password)) {
+      Serial.println("Connected to MQTT broker");
+      
+
+    } else {
+      Serial.print("Failed to connect, rc=");
+      Serial.print(client.state());
+      delay(5000);
+    }
+  }
+  
   delay(1000);
   lcd.clear(); 
-  delay(2000);
 
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
@@ -52,20 +78,13 @@ void loop(){
     return;
   }
 
-  // Compute heat index in Fahrenheit (the default)
-  float hif = dht.computeHeatIndex(f, h);
-  // Compute heat index in Celsius (isFahreheit = false)
-  float hic = dht.computeHeatIndex(t, h, false);
 
-  Serial.print(F("Humidity: "));
-  Serial.print(h);
-  Serial.print(F("%  Temperature: "));
-  Serial.print(t);
-  Serial.print(F("°C "));
-  Serial.print(f);
-  Serial.print(F("°F  Heat index: "));
-  Serial.print(hic);
-  Serial.print(F("°C "));
-  Serial.print(hif);
-  Serial.println(F("°F"));
+  lcd.setCursor(0, 0);
+  lcd.print(F("Temperature: "));
+  lcd.setCursor(0, 1);
+  lcd.print(t);
+  lcd.print(" C ");
+  client.publish("*", String(t).c_str());
+
+  client.loop();
 }
